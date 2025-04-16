@@ -12,7 +12,7 @@ import shutil
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def args():
+def get_args():
     ap = argparse.ArgumentParser()
     ap.add_argument('--path_train_json', default='labels.json', help='[optional] the path of a json file for train')
     ap.add_argument('--path_val_json', default='labels.json', help='[optional] the path of a json file for val')
@@ -217,7 +217,7 @@ def convert_to_yolo(args):
     
 
 def main():
-    args = args()
+    args = get_args()
     convert_to_yolo(args)
 
 if __name__ == '__main__':
