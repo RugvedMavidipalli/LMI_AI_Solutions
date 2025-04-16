@@ -38,7 +38,7 @@ class Yolov8_cls(Yolov8):
             getattr(
                 self.model.model,
                 "transforms",
-                classify_transforms(imgsz[0], crop_fraction=crop_fraction),
+                classify_transforms(imgsz[0]),
             )
         )
         self._legacy_transform_name = "ultralytics.yolo.data.augment.ToTensor"
