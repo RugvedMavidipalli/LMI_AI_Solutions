@@ -37,6 +37,7 @@ def pad_image_with_csv(input_path, csv_path, output_path, output_imsize, save_bg
     for f in files:
         p = os.path.join(input_path, f)
         im_name = os.path.basename(f)
+        logger.info(f'processing {im_name}')
         im = cv2.imread(p)
         h,w = im.shape[:2]
         
