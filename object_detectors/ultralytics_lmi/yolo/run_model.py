@@ -31,6 +31,7 @@ if __name__ == '__main__':
     parser.add_argument('--pose', action='store_true', help='[optional] whether to run Pose model')
     parser.add_argument('--el', action='store_false', help='[optional] log level default is ERROR', default=False)
     parser.add_argument('--resize', required=False, nargs=2, type=int, help='resize')
+    parser.add_argument('--no-label', action='store_true', help='[optional] do not show label')
     parser.add_argument('--pad', required=False, nargs=2, type=int, help='pad')
     args = parser.parse_args()
     
@@ -155,10 +156,11 @@ if __name__ == '__main__':
                     box = box.astype(np.int32)
                     # annotation
                     color = color_map[classes[j]]
+                    label = None if args.no_label else f'{classes[j]}: {scores[j]:.2f}'
                     if args.obb:
-                        plot_one_rbox(box,im_out,color=color,label=f'{classes[j]}: {scores[j]:.2f}')
+                        plot_one_rbox(box,im_out,color=color,label=label)
                     else:
-                        plot_one_box(box,im_out,mask,color=color,label=f'{classes[j]}: {scores[j]:.2f}')
+                        plot_one_box(box,im_out,mask,color=color,label=label)
                     
                     if segments and len(segments[j]):
                         seg = segments[j]

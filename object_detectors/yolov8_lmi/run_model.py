@@ -66,7 +66,7 @@ if __name__ == '__main__':
     logger.info(f'warmup proc time -> {t2-t1:.4f}')
         
     fname_to_shapes = collections.defaultdict(list)
-    batches = get_img_path_batches(batch_size=BATCH_SIZE, img_dir=args.path_imgs)
+    batches = get_img_path_batches(BATCH_SIZE,args.path_imgs) + get_img_path_batches(BATCH_SIZE,args.path_imgs,fmt='jpg')
     logger.info(f'loaded {len(batches)} with a batch size of {BATCH_SIZE}')
 
     for batch in tqdm(batches):

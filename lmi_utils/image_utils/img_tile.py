@@ -111,12 +111,21 @@ if __name__=="__main__":
     ap.add_argument('--option', required=True)
     ap.add_argument('-i','--src', required=True)
     ap.add_argument('-o','--dest', required=True)
-    ap.add_argument('--tile', type=int, nargs=2, default=[224,224], help='tile hight and width')
-    ap.add_argument('--stride', type=int, nargs=2, default=[224,224], help='stride hight and width')
+    ap.add_argument('--tile', type=int, nargs='*', default=[224,224], help='tile hight and width. Can be a single int or two integers')
+    ap.add_argument('--stride', type=int, nargs='*', default=[224,224], help='stride hight and width. Can be a single int or two integers')
     ap.add_argument('--recursive', action='store_true', help='load images recursively')
     ap.add_argument('--resize', action='store_true', help='interpolate if it needs to resize images, otherwise pad zeros')
     
     args=ap.parse_args()
+    
+    if len(args.tile) not in (1, 2):
+        ap.error("--tile requires 1 or 2 integers")
+    if len(args.stride) not in (1, 2):
+        ap.error("--stride requires 1 or 2 integers")
+    if len(args.tile) == 1:
+        args.tile = [args.tile[0], args.tile[0]]
+    if len(args.stride) == 1:
+        args.stride = [args.stride[0], args.stride[0]]
     
     mode = ScaleMode.INTERPOLATION if args.resize else ScaleMode.PADDING
     if args.option == 'tile':
