@@ -1,9 +1,8 @@
 from typing import Dict, Any
-from anomalib_lmi.base import Anomalib_Base
 from .anomaly_detector_registry import AnomalyDetectorRegistry
 import logging
 
-class AnomalyDetector(Anomalib_Base):
+class AnomalyDetector:
 
     def __new__(cls, metadata: Dict[str, Any], *args, **kwargs):
         logger = logging.getLogger(__name__)
