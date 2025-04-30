@@ -30,7 +30,7 @@ class AnomalyModel(Anomalib_Base):
     logger = logging.getLogger('AnomalyModel v0')
     logger.setLevel(logging.INFO)
     
-    def __init__(self, model_path):
+    def __init__(self, model_path, **kwargs):
         if not os.path.isfile(model_path):
             raise Exception(f'Cannot find the model file: {model_path}')
         

@@ -27,7 +27,7 @@ class AnomalyModel2(Anomalib_Base):
     logger = logging.getLogger('AnomalyModel v1')
     logger.setLevel(logging.INFO)
     
-    def __init__(self, model_path, tile=None, stride=None, tile_mode='padding'):
+    def __init__(self, model_path, tile=None, stride=None, tile_mode='padding', **kwargs):
         """_summary_
 
         Args:
