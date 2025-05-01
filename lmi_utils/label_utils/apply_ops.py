@@ -32,7 +32,7 @@ def load_images(path_imgs,dataset):
         img_height, img_width = im.shape[:2]
         f.height = img_height
         f.width = img_width
-    return images
+    return dataset, images
 
 def generate_image_name(image_name, args):
     if args['operation'] == 'resize':
@@ -176,7 +176,7 @@ def apply_ops(args):
 
     # load dataset
     dataset = Dataset.load(path_json)
-    images = load_images(path_imgs, dataset)
+    dataset, images = load_images(path_imgs, dataset)
     output_images = images
     output_dataset = dataset
     # perform operation
