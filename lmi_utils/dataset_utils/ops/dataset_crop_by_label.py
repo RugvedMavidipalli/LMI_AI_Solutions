@@ -123,6 +123,10 @@ def crop_dataset_by_label(dataset, images,target_label, crop_warning_level=loggi
         crop_box = crop_labels[file.path]['label'][:-1]
         cangle = crop_labels[file.path]['label'][-1]
         crop_box = np.array(crop_box).astype(np.int32)
+        image = images[file.path]
+        if image is None:
+            raise ValueError(f'failed to read {file.path}')
+        image_height, image_width = image.shape[:2]
         if cangle > 0:
             raise Exception(f'Obb is not supported')
         
@@ -165,7 +169,7 @@ def crop_dataset_by_label(dataset, images,target_label, crop_warning_level=loggi
             
             # Mask Annotation
             elif isinstance(annot, MaskAnnotation):
-                mask = annot.value.to_numpy(h=file.height, w=file.width)
+                mask = annot.value.to_numpy(h=image_height, w=image_width)
                 cropped_mask, _ = crop_mask([cx1, cy1,cx2,cy2], mask=mask, bbox_format="xyxy")
                 if cropped_mask is None:
                     logger.warning(f'mask {annot.id} is out of the crop box, skip')
@@ -208,9 +212,6 @@ def crop_dataset_by_label(dataset, images,target_label, crop_warning_level=loggi
                 raise ValueError(f'unsupported annotation type {annot.type}')
         
         # save the cropped image
-        image = images[file.path]
-        if image is None:
-            raise ValueError(f'failed to read {file.path}')
         
         cropped_image = image[cy1:cy2, cx1:cx2]
         cropped_images[file.path] = cropped_image
