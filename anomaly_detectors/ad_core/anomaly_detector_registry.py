@@ -1,5 +1,6 @@
 import json
 from typing import Type, Dict, Tuple, Any, Optional, List
+import logging
 
 class AnomalyDetectorRegistry:
     _registry: Dict[Tuple[str, str, str, str, str], Type] = {}
@@ -17,6 +18,8 @@ class AnomalyDetectorRegistry:
 
     @classmethod
     def register(cls, metadata: Dict[str, Any]):
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Registering class with metadata: {metadata}")
         frameworks: Optional[List[str]] = metadata.get('frameworks')
         model_names: Optional[List[str]] = metadata.get('model_names')
         tasks: Optional[List[str]] = metadata.get('tasks')
@@ -39,7 +42,7 @@ class AnomalyDetectorRegistry:
                             key = cls._generate_key(framework, model_name, task, version, info)
                             if key in cls._registry:
                                 existing_cls = cls._registry[key]
-                                raise ValueError(
+                                logger.warning(
                                     f"Combination already registered: "
                                     f"framework='{framework}', model_name='{model_name}', "
                                     f"task='{task}', version='{version}', info='{json.dumps(info, sort_keys=True)}' "
