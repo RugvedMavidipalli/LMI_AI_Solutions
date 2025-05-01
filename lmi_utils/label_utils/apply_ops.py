@@ -29,6 +29,9 @@ def load_images(path_imgs,dataset):
         if im is None:
             raise Exception(f'cannot read image: {file_path}')
         images[file_path] = im
+        img_height, img_width = im.shape[:2]
+        f.height = img_height
+        f.width = img_width
     return images
 
 def generate_image_name(image_name, args):
