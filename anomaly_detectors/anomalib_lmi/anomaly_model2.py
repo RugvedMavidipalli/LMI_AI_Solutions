@@ -50,6 +50,8 @@ class AnomalyModel2(Anomalib_Base):
         else:
             self.logger.warning('GPU device unavailable. Use CPU instead.')
             self.device = torch.device('cpu')
+        self.pt_metadata = {}
+        self.image_size = kwargs.get('image_size', [224,224])
             
         _,ext = os.path.splitext(model_path)
         self.fp16 = False
@@ -91,7 +93,7 @@ class AnomalyModel2(Anomalib_Base):
                         self.logger.info(f"Model shape: {self.model_shape}")
             
             except Exception as e:
-                self.logger.warning(f"Failed to load model: {model_path}. Error: {e}")
+                self.logger.warning(f"Failed to load model: {model_path}. Attempting to load using torchscript.")
                 self.pt_model = None
             
             if self.pt_model is None:
