@@ -129,8 +129,9 @@ class AnomalyModel2(Anomalib_Base):
         args:
             - image: numpy array [H,W,Ch]
         '''
-        if image.shape[0] != self.model_shape[0] or image.shape[1] != self.model_shape[1]:
-            image = pipeline_utils.resize_image(image, W=self.model_shape[1], H=self.model_shape[0])
+        if self.tiler is None:
+            if image.shape[0] != self.model_shape[0] or image.shape[1] != self.model_shape[1]:
+                image = pipeline_utils.resize_image(image, W=self.model_shape[1], H=self.model_shape[0])
         img = self.from_numpy(image).float()
         
         # grayscale to rgb
