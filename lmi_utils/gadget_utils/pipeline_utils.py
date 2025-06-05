@@ -1,3 +1,22 @@
+"""
+A collection of utility functions for image and data processing pipelines,
+particularly focused on tasks involving image manipulation, coordinate transformations,
+and data loading for machine learning models.
+
+This module includes functions for:
+- Image resizing and padding using PyTorch or OpenCV.
+- Conversion between uint16 and int16 profile data.
+- Transforming 2D profile data to 3D point clouds.
+- Converting 2D pixel coordinates to 3D sensor space.
+- Plotting bounding boxes (standard and rotated) and masks on images.
+- Reverting and applying sequences of geometric operations on points and masks.
+- Helper functions for dictionary manipulation (key conversion, value-to-key).
+- Batch loading of image paths or gadget image (profile/intensity) pairs.
+- Loading pipeline configuration definitions from JSON files.
+
+Dependencies include NumPy, OpenCV (cv2), PyTorch, and standard Python libraries
+like os, json, random, logging, and glob.
+"""
 import numpy as np
 import cv2
 import random
@@ -18,13 +37,24 @@ logger.setLevel(logging.INFO)
 
 
 @torch.no_grad()
-def resize_image(im, W=None, H=None, mode='bilinear'):
+def resize_image(im: np.ndarray | torch.Tensor, W: int = None, H: int = None, mode: str = 'bilinear') -> np.ndarray | torch.Tensor:
     """
-    args: 
-        im(np array | torch.tensor): the image of the shape (H,W) or (H,W,C)
-        W(int): width
-        H:(int): Height
-        mode(str): 'nearest' | 'linear' | 'bilinear' | 'bicubic' | 'trilinear' | 'area' | 'nearest-exact'. Default: 'bilinear'
+    Resizes an image to a target width (W) and height (H) using PyTorch's F.interpolate.
+
+    If only W or H is provided, the other dimension is scaled to maintain aspect ratio.
+    If neither W nor H is provided, the original image is returned.
+
+    Args:
+        im (np.ndarray | torch.Tensor): The input image of shape (H,W) or (H,W,C).
+        W (int, optional): Target width. Defaults to None.
+        H (int, optional): Target height. Defaults to None.
+        mode (str, optional): Interpolation mode. Options include 'nearest', 'linear',
+                              'bilinear', 'bicubic', 'trilinear', 'area', 'nearest-exact'.
+                              Defaults to 'bilinear'.
+
+    Returns:
+        np.ndarray | torch.Tensor: The resized image, in the same format (NumPy array or
+                                   PyTorch tensor) as the input.
     """
     if W is None and H is None:
         return im
@@ -57,21 +87,27 @@ def resize_image(im, W=None, H=None, mode='bilinear'):
 
 
 @torch.no_grad()
-def fit_im_to_size(im, W=None, H=None, value=0):
+def fit_im_to_size(im: np.ndarray | torch.Tensor, W: int = None, H: int = None, value: int = 0) -> tuple:
     """
-    description:
-        pad/crop the image to the size [W,H] with BLACK pixels
-    arguments:
-        im(np.array or torch.Tensor): the image of the shape (H,W) or (H,W,C)
-        W(int): the target width. If None, the width will not be changed
-        H(int): the target height. If None, the height will not be changed
-        value(int): the value to pad
-    return:
-        im(torch.Tensor): the padded/cropped image 
-        pad_l(int): number of pixels padded to left
-        pad_r(int): number of pixels padded to right
-        pad_t(int): number of pixels padded to top
-        pad_b(int): number of pixels padded to bottom
+    Pads or crops an image to a target size [W, H] using PyTorch's F.pad.
+
+    Padding is applied symmetrically (half on each side). If cropping, it crops from
+    the center. If W or H is None, the respective dimension is not changed.
+
+    Args:
+        im (np.ndarray | torch.Tensor): The input image of shape (H,W) or (H,W,C).
+        W (int, optional): Target width. If None, original width is used. Defaults to None.
+        H (int, optional): Target height. If None, original height is used. Defaults to None.
+        value (int, optional): The value used for padding. Defaults to 0 (black).
+
+    Returns:
+        tuple:
+            - im_processed (np.ndarray | torch.Tensor): The padded/cropped image, in the
+              same format as input.
+            - pad_L (int): Number of pixels padded (positive) or cropped (negative) from the left.
+            - pad_R (int): Number of pixels padded (positive) or cropped (negative) from the right.
+            - pad_T (int): Number of pixels padded (positive) or cropped (negative) from the top.
+            - pad_B (int): Number of pixels padded (positive) or cropped (negative) from the bottom.
     """
     
     if W is None and H is None:
@@ -130,7 +166,27 @@ def fit_im_to_size(im, W=None, H=None, value=0):
     return im, pad_L, pad_R, pad_T, pad_B
 
 
-def fit_array_to_size(im, W=None, H=None, value=0):
+def fit_array_to_size(im: np.ndarray, W: int = None, H: int = None, value: int = 0) -> tuple:
+    """
+    Pads or crops a NumPy image array to a target size [W, H] using OpenCV's copyMakeBorder.
+
+    This function is an alternative to `fit_im_to_size` for NumPy arrays, using OpenCV
+    for padding. Behavior for padding/cropping is similar: symmetrical.
+
+    Args:
+        im (np.ndarray): The input image array of shape (H,W) or (H,W,C).
+        W (int, optional): Target width. If None, original width is used. Defaults to None.
+        H (int, optional): Target height. If None, original height is used. Defaults to None.
+        value (int, optional): The value used for padding. Defaults to 0 (black).
+
+    Returns:
+        tuple:
+            - im_processed (np.ndarray): The padded/cropped image.
+            - pad_L (int): Number of pixels padded/cropped from the left.
+            - pad_R (int): Number of pixels padded/cropped from the right.
+            - pad_T (int): Number of pixels padded/cropped from the top.
+            - pad_B (int): Number of pixels padded/cropped from the bottom.
+    """
     h_im,w_im=im.shape[:2]
     if W is None:
         W=w_im
@@ -161,9 +217,23 @@ def fit_array_to_size(im, W=None, H=None, value=0):
     return im, pad_L, pad_R, pad_T, pad_B
 
 
-def uint16_to_int16(profile):
+def uint16_to_int16(profile: np.ndarray | torch.Tensor) -> np.ndarray | torch.Tensor:
     """
-    convert uint16 profile image to int16
+    Converts a uint16 profile image to int16 format.
+
+    This is often needed as profile data might be stored as uint16 (e.g., by adding 2^15)
+    but needs to be in int16 for certain calculations or interpretations where
+    -2^15 represents invalid/missing data.
+
+    Args:
+        profile (np.ndarray | torch.Tensor): The input uint16 profile image.
+
+    Returns:
+        np.ndarray | torch.Tensor: The profile image converted to int16, in the
+                                   same format (NumPy or PyTorch) as input.
+
+    Raises:
+        Exception: If the input profile is not uint16.
     """
     is_numpy = isinstance(profile, np.ndarray)
     if is_numpy:
@@ -178,18 +248,32 @@ def uint16_to_int16(profile):
 
 
 @torch.no_grad()
-def profile_to_3d(profile, resolution, offset):
+def profile_to_3d(profile: np.ndarray | torch.Tensor, resolution: tuple, offset: tuple) -> tuple:
     """
-    convert profile image to 3d sensor space
-    args:
-        profile(np array | tensor): the profile image
-        resolution(tuple): (x_resolution, y_resolution, z_resolution)
-        offset(tuple): (x_offset, y_offset, z_offset)
-    return:
-        X: the x coordinates in 3d space, same shape as profile
-        Y: the y coordinates in 3d space, same shape as profile
-        Z: the z coordinates in 3d space, same shape as profile
-        mask: the mask of the profile image to remove background
+    Converts a 2D profile image (height map) to 3D sensor space coordinates (X, Y, Z).
+
+    Also returns a mask indicating valid (non-background) points in the profile.
+    Assumes that -2^15 in the int16 profile represents invalid/background points.
+
+    Args:
+        profile (np.ndarray | torch.Tensor): The input int16 profile image.
+        resolution (tuple): A tuple (x_resolution, y_resolution, z_resolution)
+                            defining the scaling factor for each dimension.
+        offset (tuple): A tuple (x_offset, y_offset, z_offset) defining the
+                        origin offset for each dimension.
+
+    Returns:
+        tuple:
+            - X (np.ndarray | torch.Tensor): 2D array of X coordinates in 3D space,
+              same shape as input profile.
+            - Y (np.ndarray | torch.Tensor): 2D array of Y coordinates in 3D space.
+            - Z (np.ndarray | torch.Tensor): 2D array of Z coordinates (heights) in 3D space.
+            - mask (np.ndarray | torch.Tensor): A boolean 2D array indicating valid points
+              (True where profile data is not -2^15).
+              All returned tensors/arrays match the input type (NumPy or PyTorch).
+
+    Raises:
+        Exception: If the input profile is not int16.
     """
     is_numpy = isinstance(profile, np.ndarray)
     
@@ -221,14 +305,25 @@ def profile_to_3d(profile, resolution, offset):
     return X,Y,Z,mask
 
 
-def pts_to_3d(pts, profile, resolution, offset):
+def pts_to_3d(pts: np.ndarray | torch.Tensor, profile: np.ndarray | torch.Tensor,
+              resolution: tuple, offset: tuple) -> np.ndarray | torch.Tensor:
     """
-    convert list of 2d pixel locations to 3d sensor space
-    args:
-        pts(numpy | tensor): array of (x,y) points, with shape of Nx2
-        profile(same type as pts): the profile image
-        resolution(tuple): (x_resolution, y_resolution, z_resolution)
-        offset(tuple): (x_offset, y_offset, z_offset)
+    Converts a list of 2D pixel locations (points) to 3D sensor space coordinates.
+
+    Args:
+        pts (np.ndarray | torch.Tensor): An Nx2 array of (x, y) pixel coordinates.
+        profile (np.ndarray | torch.Tensor): The int16 profile image corresponding to the points.
+                                            Used to get Z values.
+        resolution (tuple): (x_resolution, y_resolution, z_resolution) for scaling.
+        offset (tuple): (x_offset, y_offset, z_offset) for origin offset.
+
+    Returns:
+        np.ndarray | torch.Tensor: An Nx3 array of (X, Y, Z) coordinates in 3D sensor space,
+                                   matching the input type (NumPy or PyTorch).
+
+    Raises:
+        Exception: If input types of `pts` and `profile` do not match, or if `pts`
+                   has an incorrect shape, or if `profile` is not int16.
     """
     if type(pts) != type(profile):
         raise Exception(f'pts and profile should have the same type, got {type(pts)} and {type(profile)}')
@@ -259,19 +354,39 @@ def pts_to_3d(pts, profile, resolution, offset):
     return xyz.numpy() if is_numpy else xyz
 
 
-def plot_one_box(box, img, mask=None, mask_threshold:float=0.0, color=None, label=None, line_thickness=None, hide_bbox=False):
+def plot_one_box(box: np.ndarray | list,
+                 img: np.ndarray,
+                 mask: np.ndarray | torch.Tensor = None,
+                 mask_threshold: float = 0.0,
+                 color: list = None,
+                 label: str = None,
+                 line_thickness: int = None,
+                 hide_bbox: bool = False):
     """
-    description: Plots one bounding box and mask (optinal) on image img,
-                 this function comes from YoLov5 project.
-    param: 
-        box:    a box likes [x1,y1,x2,y2]
-        img:    a opencv image object in BGR format
-        mask:   a binary mask for the box
-        color:  color to draw rectangle, such as (0,255,0)
-        label:  str
-        line_thickness: int
-    return:
-        no return
+    Plots one bounding box (and optionally a mask) on an image.
+
+    This function is adapted from common plotting utilities in object detection projects.
+    The image is modified in-place.
+
+    Args:
+        box (np.ndarray | list): Bounding box coordinates, expected as [x1, y1, x2, y2].
+        img (np.ndarray): The image (OpenCV BGR format) on which to draw.
+        mask (np.ndarray | torch.Tensor, optional): A binary or probability mask
+                                                    corresponding to the bounding box.
+                                                    If provided, it's drawn on the image.
+                                                    Defaults to None.
+        mask_threshold (float, optional): Threshold for binarizing the mask if it's not
+                                          already binary. Defaults to 0.0.
+        color (list, optional): Color for the bounding box and mask, as a BGR tuple
+                                (e.g., [0, 255, 0] for green). If None, a random
+                                color is used. Defaults to None.
+        label (str, optional): A label string to display with the bounding box.
+                               Defaults to None.
+        line_thickness (int, optional): Thickness of the bounding box lines. If None,
+                                        it's auto-calculated based on image size.
+                                        Defaults to None.
+        hide_bbox (bool, optional): If True, does not draw the bounding box rectangle
+                                    (e.g., if only drawing a mask). Defaults to False.
     """
     tl = (
         line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1
@@ -309,18 +424,32 @@ def plot_one_box(box, img, mask=None, mask_threshold:float=0.0, color=None, labe
         )
 
 
-def plot_one_rbox(box, img, color=None, label=None, line_thickness=None, hide_bbox=False):
+def plot_one_rbox(box: np.ndarray | list,
+                  img: np.ndarray,
+                  color: list = None,
+                  label: str = None,
+                  line_thickness: int = None,
+                  hide_bbox: bool = False):
     """
-    description: Plots one bounding rotated bbox on image img
-    param: 
-        box:    a box likes [[x,y],[x,y],[x,y],[x,y]]
-        img:    a opencv image object in BGR format
-        mask:   a binary mask for the box
-        color:  color to draw polygon, such as (0,255,0)
-        label:  str
-        line_thickness: int
-    return:
-        no return
+    Plots one rotated bounding box on an image.
+
+    The image is modified in-place.
+
+    Args:
+        box (np.ndarray | list): Rotated bounding box coordinates, expected as a list
+                                 or array of 4 points, e.g., [[x1,y1],[x2,y2],[x3,y3],[x4,y4]].
+        img (np.ndarray): The image (OpenCV BGR format) on which to draw.
+        color (list, optional): Color for the bounding box, as a BGR tuple.
+                                If None, a random color is used. Defaults to None.
+        label (str, optional): A label string to display with the bounding box.
+                               Defaults to None.
+        line_thickness (int, optional): Thickness of the bounding box lines. If None,
+                                        it's auto-calculated. Defaults to None.
+        hide_bbox (bool, optional): If True, does not draw the bounding box polygon.
+                                    Defaults to False.
+
+    Raises:
+        Exception: If the input `box` does not contain 4 points.
     """
     tl = (
         line_thickness or round(0.002 * (img.shape[0] + img.shape[1]) / 2) + 1
@@ -360,16 +489,24 @@ def plot_one_rbox(box, img, color=None, label=None, line_thickness=None, hide_bb
 
 
 @torch.no_grad()
-def revert_mask_to_origin(mask, operations:list):
+def revert_mask_to_origin(mask: np.ndarray | torch.Tensor, operations: list) -> np.ndarray | torch.Tensor:
     """
-    This func reverts a single mask image according to the operations list IN ORDER.
-    The operations list contains items as dictionary. The items are listed as follows: 
-        1. <pad: [pad_left_pixels, pad_right_pixels, pad_top_pixels, pad_bottom_pixels]> 
-        2. <resize: [resized_w, resized_h, orig_w, orig_h]>
-        3. <flip: [flip left right, flip up down, im width, im height]>
-    args:
-        mask: np.array or torch.Tensor, shape (H,W) or (H,W,C)
-        operations : list of dict
+    Reverts transformations applied to a single mask image to restore its original state.
+
+    The transformations are reverted in the reverse order of their application,
+    as defined in the `operations` list. Supported operations: 'resize', 'pad', 'flip'.
+
+    Args:
+        mask (np.ndarray | torch.Tensor): The mask image to transform, shape (H,W) or (H,W,C).
+        operations (list): A list of dictionaries, where each dictionary defines a
+                           transformation and its parameters.
+                           - {'resize': [target_w, target_h, original_w, original_h]}
+                           - {'pad': [pad_left, pad_right, pad_top, pad_bottom]} (values are amounts padded)
+                           - {'flip': [lr_flipped (bool), ud_flipped (bool), im_width, im_height]}
+
+    Returns:
+        np.ndarray | torch.Tensor: The mask image with transformations reverted,
+                                   in the same format as input.
     """
     is_numpy = isinstance(mask, np.ndarray)
     for operator in reversed(operations):
@@ -394,32 +531,69 @@ def revert_mask_to_origin(mask, operations:list):
     return mask
 
 
-def revert_masks_to_origin(masks, operations:list):
+def revert_masks_to_origin(masks: list | np.ndarray | torch.Tensor, operations: list) -> list | np.ndarray | torch.Tensor:
+    """
+    Reverts transformations for a list or batch of mask images.
+
+    Args:
+        masks (list | np.ndarray | torch.Tensor): A list or batch of mask images.
+        operations (list): A list of transformation operation dictionaries, as defined
+                           in `revert_mask_to_origin`.
+
+    Returns:
+        list | np.ndarray | torch.Tensor: The transformed masks, in the same batch
+                                          format as input (list, NumPy array, or PyTorch tensor).
+    """
     results = []
     if len(masks)==0:
-        return results
-    is_tensor = isinstance(masks[0], torch.Tensor)
-    is_numpy = isinstance(masks, np.ndarray)
+        return masks # Return empty input as is
+
+    # Determine input type to return same type
+    is_torch_tensor_input = isinstance(masks, torch.Tensor)
+    # Handle cases where masks might be a list of tensors vs a single stacked tensor
+    # For now, assumes if torch.Tensor, it's a batch that can be iterated.
+    # If it's a list of tensors/arrays, it will also work.
+
+    is_numpy_array_input = isinstance(masks, np.ndarray)
+    # Check if the first element is a tensor if input is a list
+    is_list_of_tensors = isinstance(masks, list) and len(masks) > 0 and isinstance(masks[0], torch.Tensor)
+
+
     for m in masks:
         results.append(revert_mask_to_origin(m, operations))
-    if is_tensor:
-        return torch.stack(results)
-    return np.stack(results) if is_numpy else results
+
+    if is_torch_tensor_input or is_list_of_tensors:
+        return torch.stack(results) if results else torch.empty(0)
+    elif is_numpy_array_input:
+        return np.stack(results) if results else np.empty((0,) + masks.shape[1:]) # preserve ndim if empty
+    return results # Return as list if input was list of non-tensors
 
 
 @torch.no_grad()
-def revert_to_origin(pts, operations:list):
+def revert_to_origin(pts: np.ndarray | torch.Tensor | list, operations: list) -> np.ndarray | torch.Tensor | list:
     """
-    revert the points to original image space.
-    This func executes operations in the REVERSED order.
-    The operations list contains items as dictionary. The supported items are listed following: 
-        1. <stretch: [stretch_ratio_x, stretch_ratio_y]>
-        2. <pad: [pad_left, pad_right, pad_top, pad_bottom]> 
-        3. <resize: [resized_w, resized_h, orig_w, orig_h]>
-        4. <flip: [flip left-right (True/False), flip up-down (True/False), image width, image height]>
-    args:
-        pts: Nx2 or Nx4, where each row =(X_i,Y_i)
-        operations : list of dict
+    Reverts a sequence of geometric transformations applied to a set of points.
+
+    The transformations are reverted in the reverse order of their application as
+    defined in the `operations` list. Supported operations: 'resize', 'pad',
+    'stretch', 'flip'.
+
+    Args:
+        pts (np.ndarray | torch.Tensor | list): An Nx2 or Nx4 array/tensor/list of points.
+                                                Each row is (x,y) or (x1,y1,x2,y2).
+        operations (list): A list of dictionaries defining transformations.
+                           - {'resize': [target_w, target_h, original_w, original_h]}
+                           - {'pad': [pad_left, pad_right, pad_top, pad_bottom]}
+                           - {'stretch': [stretch_x_ratio, stretch_y_ratio]}
+                           - {'flip': [lr_flipped (bool), ud_flipped (bool), im_width, im_height]}
+
+    Returns:
+        np.ndarray | torch.Tensor | list: The points with transformations reverted,
+                                          rounded to nearest integer and clamped to be non-negative.
+                                          Output type matches input type.
+
+    Raises:
+        Exception: If `pts` has an unsupported shape or an operation is unsupported.
     """
     is_tensor = isinstance(pts, torch.Tensor)
     is_numpy = isinstance(pts, np.ndarray)
@@ -465,18 +639,24 @@ def revert_to_origin(pts, operations:list):
     return pts.numpy() if is_numpy else pts.tolist()
 
 
-def apply_operations(pts:np.ndarray, operations:list):
-    
+def apply_operations(pts: np.ndarray | torch.Tensor | list, operations: list) -> np.ndarray | torch.Tensor | list:
     """
-    apply operations to pts.
-    The operations list contains each item as a dictionary. The items are listed as follows: 
-        1. <stretch: [stretch_ratio_x, stretch_ratio_y]>
-        2. <pad: [pad_left_pixels, pad_right_pixels, pad_top_pixels, pad_bottom_pixels]> 
-        3. <resize: [resized_w, resized_h, orig_w, orig_h]>
-        4. <flip: [flip left-right (True/False), flip up-down (True/False), image width, image height]>
-    args:
-        pts: Nx2 or Nx4, where each row =(X_i,Y_i)
-        operations : list of dict
+    Applies a sequence of geometric transformations to a set of points.
+
+    This function effectively does the inverse of `revert_to_origin`.
+    It constructs an inverse set of operations and then calls `revert_to_origin`.
+
+    Args:
+        pts (np.ndarray | torch.Tensor | list): An Nx2 or Nx4 array/tensor/list of points.
+        operations (list): A list of dictionaries defining transformations to apply,
+                           in the same format as for `revert_to_origin`.
+
+    Returns:
+        np.ndarray | torch.Tensor | list: The points with transformations applied.
+                                          Output type matches input type.
+
+    Raises:
+        Exception: If an operation is unsupported.
     """
     new_ops = []
     for op in operations:
@@ -499,18 +679,51 @@ def apply_operations(pts:np.ndarray, operations:list):
     
     
     
-def convert_key_to_int(dt):
+def convert_key_to_int(dt: dict) -> dict:
     """
-    convert the class map <id, class name> to integer class id
+    Converts string keys in a dictionary to integers.
+
+    Useful for class maps where class IDs might be read as strings but need
+    to be integers for processing.
+
+    Args:
+        dt (dict): The input dictionary.
+
+    Returns:
+        dict: A new dictionary with keys converted to integers.
     """
     return {int(k):dt[k] for k in dt}  
 
 
-def val_to_key(dt):
+def val_to_key(dt: dict) -> dict:
+    """
+    Swaps keys and values in a dictionary.
+
+    If multiple keys have the same value, the behavior is undefined as one
+    key-value pair will overwrite others during construction.
+
+    Args:
+        dt (dict): The input dictionary.
+
+    Returns:
+        dict: A new dictionary where original values are keys and original keys are values.
+    """
     return {dt[k]:k for k in dt}
 
     
-def get_img_path_batches(batch_size, img_dir, fmt='png'):
+def get_img_path_batches(batch_size: int, img_dir: str, fmt: str = 'png') -> list:
+    """
+    Scans a directory for image files and groups their paths into batches.
+
+    Args:
+        batch_size (int): The number of image paths per batch.
+        img_dir (str): The directory to scan for images.
+        fmt (str, optional): The file extension (format) of images to find.
+                             Defaults to 'png'.
+
+    Returns:
+        list: A list of lists, where each inner list contains a batch of image file paths.
+    """
     ret = []
     batch = []
     cnt_images = 0
@@ -529,33 +742,89 @@ def get_img_path_batches(batch_size, img_dir, fmt='png'):
     return ret
 
 
-def get_gadget_img_batches(batch_size, profile_dir, intensity_dir, fmt='png'):
+def get_gadget_img_batches(batch_size: int, profile_dir: str, intensity_dir: str, fmt: str = 'png') -> list:
+    """
+    Scans directories for profile and intensity image files, pairs them, and groups into batches.
+
+    Assumes that profile and intensity images have corresponding names and can be matched
+    after sorting their respective file lists.
+
+    Args:
+        batch_size (int): The number of profile/intensity pairs per batch.
+        profile_dir (str): Directory containing profile images.
+        intensity_dir (str): Directory containing intensity images.
+        fmt (str, optional): File extension for both profile and intensity images.
+                             Defaults to 'png'.
+
+    Returns:
+        list: A list of lists, where each inner list contains a batch of dictionaries.
+              Each dictionary is of the form {'profile': path_to_profile, 'intensity': path_to_intensity}.
+    """
     profile_list = glob.glob(os.path.join(profile_dir,"*."+fmt))
     intensity_list = glob.glob(os.path.join(intensity_dir,"*."+fmt))
 
     profile_list.sort()
     intensity_list.sort()
 
+    if len(profile_list) != len(intensity_list):
+        logger.warning(f"Mismatch in number of profile ({len(profile_list)}) and "
+                       f"intensity ({len(intensity_list)}) images with format '{fmt}'. "
+                       "Pairing will be based on the shorter list length.")
+
     ret = []
     batch = []
     cnt_images = 0
-    for profile, intensity in zip(profile_list, intensity_list):
+    for profile, intensity in zip(profile_list, intensity_list): # zip stops at the shorter list
         if len(batch) == batch_size:
             ret.append(batch)
             batch = []
         batch.append({"profile":profile, "intensity":intensity})
         cnt_images += 1
-    logger.info(f'loaded {cnt_images} files')
+    logger.info(f'Loaded {cnt_images} paired profile/intensity files.')
     if len(batch) > 0:
         ret.append(batch)
     return ret
 
 
-def load_pipeline_def(filepath):
-    with open(filepath) as f:
-        dt_all = json.load(f)
-        l = dt_all['configs_def']
+def load_pipeline_def(filepath: str) -> dict:
+    """
+    Loads pipeline configuration definitions from a JSON file.
+
+    The JSON file is expected to have a top-level key 'configs_def', which
+    is a list of dictionaries. Each dictionary in the list should have 'name'
+    and 'default_value' keys.
+
+    Args:
+        filepath (str): Path to the JSON configuration file.
+
+    Returns:
+        dict: A dictionary where keys are 'name' from the JSON structure and
+              values are their corresponding 'default_value'.
+              Returns an empty dict if 'configs_def' is missing or file not found.
+
+    Raises:
+        FileNotFoundError: If the specified filepath does not exist.
+        json.JSONDecodeError: If the file content is not valid JSON.
+        KeyError: If 'configs_def' key is missing or items lack 'name'/'default_value'.
+    """
+    try:
+        with open(filepath) as f:
+            dt_all = json.load(f)
+
+        l = dt_all.get('configs_def', []) # Use .get for safer access
         kwargs = {}
         for dt in l:
-            kwargs[dt['name']] = dt['default_value']
-    return kwargs
+            if 'name' in dt and 'default_value' in dt:
+                kwargs[dt['name']] = dt['default_value']
+            else:
+                logger.warning(f"Skipping config item due to missing 'name' or 'default_value': {dt}")
+        return kwargs
+    except FileNotFoundError:
+        logger.error(f"Pipeline definition file not found: {filepath}")
+        raise
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decoding JSON from {filepath}: {e}")
+        raise
+    except KeyError as e:
+        logger.error(f"Missing expected key in pipeline definition {filepath}: {e}")
+        raise

@@ -1,3 +1,31 @@
+"""
+Splits image files from a source directory into training and test sets.
+
+This script provides functionality to:
+- Discover image files (PNG, JPG, BMP) in a specified directory.
+- Optionally randomize the order of these files.
+- Split the files into training and test sets based on a specified training size.
+- Move or copy the files into 'training' and 'test' subdirectories.
+- Optionally convert images to PNG format.
+- Optionally rotate images by 90 degrees clockwise during conversion.
+
+Command-line arguments:
+  --data_dir: Path to the source data directory containing the images.
+  --training_size: The number of images to include in the training set.
+  --make_test_dir: If specified, creates a 'test' directory for files not included in the training set.
+  --make_random: If specified, randomizes the order of files before splitting.
+  --convert_to_png: If specified, converts images to PNG format.
+  --rotate_png_90: If specified (and --convert_to_png is also specified), rotates images 90 degrees clockwise.
+  --move_files: If specified, moves files from the source directory to the training/test directories.
+                Otherwise, files are copied.
+
+Example usage:
+  # Copy 100 random images to training, and the rest to test, converting to PNG
+  python train_test_split.py --data_dir /path/to/images --training_size 100 --make_test_dir --make_random --convert_to_png
+
+  # Move the first 50 images (in original order) to training, no test set, no conversion
+  python train_test_split.py --data_dir /path/to/images --training_size 50 --move_files
+"""
 import glob
 import random
 import os
@@ -6,6 +34,15 @@ import shutil
 import cv2
 
 def get_files(dir):
+    """
+    Retrieves a list of image files (PNG, JPG, BMP) from a directory.
+
+    Args:
+      dir (str): The directory to search for image files.
+
+    Returns:
+      list: A list of paths to the found image files.
+    """
     ftypes=('*.png','*.jpg','*.bmp')
     files_grabbed = []
     for ftype in ftypes:
@@ -14,12 +51,34 @@ def get_files(dir):
     return files_grabbed
 
 def randomize(files_list,seed=42):
+    """
+    Randomizes the order of elements in a list.
+
+    Args:
+      files_list (list): The list of files to randomize.
+      seed (int, optional): The random seed to use for shuffling. Defaults to 42.
+
+    Returns:
+      list: The randomized list of files.
+    """
     print(f'Randomizing source data.')
     random.seed(seed)
     random.shuffle(files_list)
     return files_list
 
 def split_files(files_list,n,make_test):
+    """
+    Splits a list of files into training and test sets.
+
+    Args:
+      files_list (list): The list of files to split.
+      n (int): The number of files to include in the training set.
+      make_test (bool): If True, files not in the training set are added to the test set.
+
+    Returns:
+      tuple: A tuple containing two lists: (training_files, test_files).
+             test_files will be empty if make_test is False or if n >= len(files_list).
+    """
     training=files_list[0:n]
     test=[]
     if make_test:
@@ -29,6 +88,17 @@ def split_files(files_list,n,make_test):
     return training,test
 
 def move_files(dir,training,test,convert_to_png,rotate_png_90,make_test):
+    """
+    Moves files to 'training' and 'test' subdirectories, with optional PNG conversion and rotation.
+
+    Args:
+      dir (str): The base directory where 'training' and 'test' subdirectories will be created.
+      training (list): A list of file paths for the training set.
+      test (list): A list of file paths for the test set.
+      convert_to_png (bool): If True, convert images to PNG format.
+      rotate_png_90 (bool): If True (and convert_to_png is True), rotate images 90 degrees.
+      make_test (bool): If True, process and move files in the 'test' list.
+    """
     training_path=os.path.join(dir,'training/')
     test_path=os.path.join(dir,'test/')
     if os.path.exists(training_path):
@@ -74,6 +144,17 @@ def move_files(dir,training,test,convert_to_png,rotate_png_90,make_test):
                 shutil.move(file,path_out)
 
 def copy_files(dir,training,test,convert_to_png,rotate_png_90,make_test):
+    """
+    Copies files to 'training' and 'test' subdirectories, with optional PNG conversion and rotation.
+
+    Args:
+      dir (str): The base directory where 'training' and 'test' subdirectories will be created.
+      training (list): A list of file paths for the training set.
+      test (list): A list of file paths for the test set.
+      convert_to_png (bool): If True, convert images to PNG format.
+      rotate_png_90 (bool): If True (and convert_to_png is True), rotate images 90 degrees.
+      make_test (bool): If True, process and copy files in the 'test' list.
+    """
     training_path=os.path.join(dir,'training/')
     os.makedirs(training_path,exist_ok=True)
     if make_test:
@@ -114,7 +195,7 @@ def copy_files(dir,training,test,convert_to_png,rotate_png_90,make_test):
 
 if __name__=="__main__":
     import argparse
-    parser=argparse.ArgumentParser()
+    parser=argparse.ArgumentParser(description="Splits image files from a source directory into training and test sets.")
     parser.add_argument("--data_dir", required=True, help='Source data directory.  All training data will be moved/copied to data_dir/training dir.')
     parser.add_argument("--training_size",type=int,default=0, help="Training data size.")
     parser.add_argument("--make_test_dir", action='store_true',help='Set to create a test directory. All non-training files will be moved/copied to data_dir/test dir.  Default to no test dir.')

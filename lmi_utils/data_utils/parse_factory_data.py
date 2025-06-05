@@ -1,3 +1,28 @@
+"""
+Parses factory data archives (tar files or unarchived folders) to extract and organize sensor images.
+
+This script processes raw sensor data, potentially decompressing .zst files and extracting images
+from .tar archives within the main archive. It organizes the extracted images into a structured
+output directory based on SKU, camera type, sensor ID, and task type (anomaly detection or
+object detection).
+
+Command-line arguments:
+  -i, --input_path: Path to the input SKU data. This can be a single SKU tarfile, an unarchived
+                    SKU folder, or a folder containing multiple SKUs.
+  -o, --out_path: Path to the output directory where extracted images will be saved.
+  --task: The type of task for which data is being parsed. Choices: "anomdet" or "objdet".
+  -n, --num_imgs: The number of images to be kept for training (default: 20).
+  -t, --target_camera: The target sensor(s) for parsing data. Format: "camera_type" or
+                       "camera_type_id" (e.g., "avt_1", "avt"). Default: "all".
+  -f, --first_dir: The folder name for training images (default: "training-data").
+  -l, --last_dir: The folder name for images not used for training (default: "untracked-data").
+  --random: If specified, randomly select training images.
+  --seed: The random seed for image selection (default: 777).
+
+Example usage:
+  python parse_factory_data.py --input_path /path/to/sku_archive.tar --out_path /path/to/output_data --task anomdet --num_imgs 50 --target_camera avt_1
+  python parse_factory_data.py --input_path /path/to/sku_folder --out_path /path/to/output_data --task objdet --random
+"""
 import os
 import subprocess
 import cv2
@@ -16,6 +41,15 @@ UNZIP_DIR = 'un_zipped'
 
 
 def load_zst_img(file_path):
+    """
+    Decompresses a .zst compressed image file and loads it as a NumPy array.
+
+    Args:
+      file_path (str): Path to the .zst compressed image file.
+
+    Returns:
+      numpy.ndarray: The decompressed image loaded as a NumPy array.
+    """
     newpath = file_path.replace('.zst','')
     cmds = ['unzstd', '-f', f'{file_path}', '-o', newpath]
     subprocess.run(' '.join(cmds), shell=True, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
@@ -25,6 +59,14 @@ def load_zst_img(file_path):
 
 
 def unzip_tarfile(file_path, output_path):
+    """
+    Unzips a .tar archive file to a specified output path.
+
+    Args:
+      file_path (str): Path to the .tar archive file.
+      output_path (str): Path to the directory where the archive contents will be extracted.
+                         If the directory doesn't exist, it will be created.
+    """
     # unzip the tar file. Create output_path if it does not exist.
     if not os.path.isdir(output_path):
         os.makedirs(output_path)
@@ -33,6 +75,31 @@ def unzip_tarfile(file_path, output_path):
 
 
 def extract_imgs(input_path, out_path, target_cam='all', num_imgs=20, first_dir='first_dir',last_dir='last_dir', task='anomdet', random_list=False, seed=777):
+    """
+    Extracts and organizes sensor images from a given input path.
+
+    This function processes SKU data (either a .tar file or an unarchived folder), extracts images
+    based on specified criteria (target camera, number of images, etc.), and saves them to an
+    organized output directory structure.
+
+    Args:
+      input_path (str): Path to the input SKU data.
+      out_path (str): Path to the main output directory.
+      target_cam (str, optional): Target camera and sensor ID (e.g., "avt_1", "gocator").
+                                  Defaults to 'all'.
+      num_imgs (int, optional): Number of images to select for the 'first_dir' (e.g., training).
+                                Defaults to 20.
+      first_dir (str, optional): Name of the directory for the first set of images.
+                                 Defaults to 'first_dir'.
+      last_dir (str, optional): Name of the directory for the remaining images.
+                                Defaults to 'last_dir'.
+      task (str, optional): Task type, used for naming subdirectories (e.g., "anomdet").
+                            Defaults to 'anomdet'.
+      random_list (bool, optional): Whether to randomly select images for 'first_dir'.
+                                    Defaults to False.
+      seed (int, optional): Random seed for image selection if random_list is True.
+                            Defaults to 777.
+    """
     sku_path = os.path.expanduser(input_path)
     out_path = os.path.expanduser(out_path)
     _,ext = os.path.splitext(sku_path)
@@ -196,4 +263,3 @@ if __name__=='__main__':
                     logger.info(f'Found parsed data: {f}, skip')
             else:
                 logger.info(f'Not find keyword "archive": {f}, skip')
-        
