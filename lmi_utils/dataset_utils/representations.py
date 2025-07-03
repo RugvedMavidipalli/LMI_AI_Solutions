@@ -9,7 +9,7 @@ import cv2
 from dataset_utils.mask_encoder import rle2mask, mask2rle
 from image_utils.img_resize import resize
 from gadget_utils.pipeline_utils import fit_array_to_size
-from label_utils.bbox_utils import rotate
+from label_utils.bbox_utils import rotate, get_rotated_bbox
 
 logger = logging.getLogger(__name__)
 
@@ -178,22 +178,29 @@ class Box(Base):
                 ]
 
     def to_mask(self, **kwargs):
-        img_h = kwargs.get("h")
-        img_w = kwargs.get("w")
         mask_type = kwargs.get("mask_type", AnnotationType.MASK)
+        angle_unit = kwargs.get("angle_unit", "degree")
+        rot_center = kwargs.get("rot_center", "up_left")
+        if self.angle != 0:
+            pts = rotate(self.x_min, self.y_min, self.x_max - self.x_min, self.y_max - self.y_min, self.angle, rot_center, angle_unit)
         if mask_type == AnnotationType.MASK:
+            img_h = kwargs.get("h")
+            img_w = kwargs.get("w")
             mask = np.zeros((img_h, img_w), dtype=np.uint8)
-            mask[int(self.y_min): int(self.y_max), int(self.x_min): int(self.x_max)] = 1
+            if self.angle != 0:
+                cv2.fillPoly(mask, [pts], 1)
+            else:
+                mask[int(self.y_min): int(self.y_max), int(self.x_min): int(self.x_max)] = 1
             return Mask(mask=mask)
         elif mask_type == AnnotationType.POLYGON:
-            return Polygon(
-                points=[
+            if self.angle == 0:
+                pts=[
                     [self.x_min, self.y_min],
                     [self.x_max, self.y_min],
                     [self.x_max, self.y_max],
                     [self.x_min, self.y_max],
                 ]
-            )
+            return Polygon(points=pts)
         else:
             raise ValueError("Unsupported mask_type in Box.to_mask")
     
@@ -248,6 +255,13 @@ class Polygon(Base):
         pts = self.to_numpy().astype(np.int32)
         cv2.fillPoly(mask, [pts], 1)
         return Mask(mask=mask2rle(mask))
+    
+    def to_rbox(self, **kwargs):
+        rbox = get_rotated_bbox(self.to_numpy().astype(int))
+        x1,y1,w,h,angle = rbox
+        x2,y2 = x1 + w, y1 + h
+        box = Box(x_min=x1, y_min=y1, x_max=x2, y_max=y2, angle=angle)
+        return box
 
 
 @dataclass
@@ -385,11 +399,11 @@ class Annotation(Base):
         iou: Optional[float] = None,
     ):
         super().__init__()
-        self.id = id
-        self.label_id = label_id
+        self.id = str(id)
+        self.label_id = str(label_id)
         self.type = type
         self.link = link
-        self.confidence = confidence
+        self.confidence = float(confidence) if confidence is not None else None
         self.iou = iou
         self.value = value
 
