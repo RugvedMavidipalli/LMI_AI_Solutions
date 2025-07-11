@@ -182,6 +182,7 @@ class Dataset(object):
         
         if brush != {}:
             for fname in brush:
+                print(f'Filename: {fname}')
                 brush_m = brush[fname]
                 for x,y,cat_str,im_id,iscrowd in zip(brush_m['x'],brush_m['y'],brush_m['category'],brush_m['image_id'],brush_m['iscrowd']):
                     #skip if category not in dictionary
@@ -278,7 +279,7 @@ class Dataset(object):
         mask = np.array(img)
         #if len(im.shape)>len(mask.shape):
         #    mask = np.repeat(mask[:, :, np.newaxis], 3, axis=2)
-        mask = mask.astype(np.bool)
+        mask = mask.astype(bool)
         #plot
         im = im.astype(float)
         im[~mask] *= 0.25
@@ -295,7 +296,7 @@ class Dataset(object):
         """
         im = cv2.imread(self.fname_to_fullpath[fname])
         im = im.astype(float)
-        mask = mask.astype(np.bool)
+        mask = mask.astype(bool)
         im[~mask] *= 0.25
         cv2.imshow('plot', im.astype(np.uint8))
         cv2.waitKey(300)
