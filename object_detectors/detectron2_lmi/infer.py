@@ -67,6 +67,9 @@ def inference_run(args):
         img = cv2.imread(img_path)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         outputs = model.predict(img, confs=confidence_map, return_segments=True)
+        if len (outputs['boxes']) == 0:
+            logger.warning(f"No detections found for image: {img_path}")
+            continue
         outputs['boxes'] = outputs['boxes'][0]
         outputs['classes'] = outputs['classes'][0]
         outputs['scores'] = outputs['scores'][0]
@@ -95,7 +98,7 @@ def inference_run(args):
                 csv_results.append(Mask(im_name=fname, category=outputs['classes'][idx], x_vals=segments[:,0].tolist(), y_vals=segments[:,1].tolist(), confidence=score))
         
         results[fname] = csv_results
-    write_to_csv(results, os.path.join(args.output, f"predictions.csv"), overwrite=True)
+    write_to_csv(results, os.path.join(out_path, f"predictions.csv"), overwrite=True)
 
     
     
