@@ -55,6 +55,7 @@ INPUT:
   MIN_SIZE_TEST: 512
   MAX_SIZE_TEST: 512
   FORMAT: RGB
+  MASK_FORMAT: # "polygon"  # alternative: "bitmask"
 
 # Training parameters
 SOLVER:
