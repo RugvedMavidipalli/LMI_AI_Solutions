@@ -125,9 +125,14 @@ class Detectron2TRT(ODBase):
         class_map = kwargs.get("class_map", None)
         if class_map is None:
             raise ValueError("class_map is required for [Detectron2TRT]")
-        self.class_map = {
-            int(k): str(v) for k, v in class_map.items()
-        }
+        try:
+            self.class_map = {
+                int(k): str(v) for k, v in class_map.items()
+            }
+        except Exception as e:
+            self.class_map = {
+                int(v): str(k) for k, v in class_map.items()
+            }
         self.class_map_func = np.vectorize(lambda c: self.class_map.get(int(c), str(c)))
     
     def warmup(self):
@@ -372,9 +377,15 @@ class Detectron2PT(ODBase):
         class_map = kwargs.get("class_map", None)
         if class_map is None:
             raise ValueError("class_map is required for [Detectron2PT]")
-        self.class_map = {
-            int(k): str(v) for k, v in class_map.items()
-        }
+        try:
+            self.class_map = {
+                int(k): str(v) for k, v in class_map.items()
+            }
+        except Exception as e:
+            # handle the case where class_map is in reverse order
+            self.class_map = {
+                int(v): str(k) for k, v in class_map.items()
+            }
         self.batch_size = kwargs.get('batch_size', 1)
         self.class_map_func = np.vectorize(lambda c: self.class_map.get(int(c), str(c)))
         self.image_size = kwargs.get('image_size', [640, 640])
