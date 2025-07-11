@@ -9,7 +9,7 @@ from shapely.geometry import Polygon
 from label_utils.csv_utils import load_csv
 from PIL import Image, ImageDraw
 import shutil
-import pycocotools
+from pycocotools import mask as coco_mask
 
 
 class Dataset(object):
@@ -108,7 +108,7 @@ class Dataset(object):
             plot(bool): wether to plot or not
             iscrowd(bool): wether the annotated instance is crowd or not
         """
-        masks = {}
+        polygons = {}
         rects = {}
         brush = {}
         #read annotations from csv file
@@ -119,16 +119,16 @@ class Dataset(object):
                 if row[1] not in dt_category:
                     continue
                 if row[3]=='polygon':
-                    if fname not in masks:
-                        masks[fname] = collections.defaultdict(list)
+                    if fname not in polygons:
+                        polygons[fname] = collections.defaultdict(list)
                     if row[4]=='x values':
-                        if 'x' not in masks:
-                            masks[fname]['x'].append(row[5:])
+                        if 'x' not in polygons:
+                            polygons[fname]['x'].append(row[5:])
                     if row[4]=='y values':
-                            masks[fname]['y'].append(row[5:])
-                            masks[fname]['category'].append(row[1])
-                            masks[fname]['iscrowd'].append(iscrowd)
-                            masks[fname]['image_id'].append(self.imgfile2id[fname])
+                            polygons[fname]['y'].append(row[5:])
+                            polygons[fname]['category'].append(row[1])
+                            polygons[fname]['iscrowd'].append(iscrowd)
+                            polygons[fname]['image_id'].append(self.imgfile2id[fname])
                 
                 elif row[3]=='brush':
                     if fname not in brush:
@@ -154,10 +154,10 @@ class Dataset(object):
                         rects[fname]['iscrowd'].append(iscrowd)
                         rects[fname]['image_id'].append(self.imgfile2id[fname])
         #generate coco annotations
-        if masks != {}:
-            for fname in masks:
-                mask = masks[fname]
-                for x,y,cat_str,im_id,iscrowd in zip(mask['x'],mask['y'],mask['category'],mask['image_id'],mask['iscrowd']):
+        if polygons != {}:
+            for fname in polygons:
+                polygon = polygons[fname]
+                for x,y,cat_str,im_id,iscrowd in zip(polygon['x'],polygon['y'],polygon['category'],polygon['image_id'],polygon['iscrowd']):
                     #skip if category not in dictionary
                     if cat_str not in dt_category:
                         continue
@@ -194,11 +194,15 @@ class Dataset(object):
                     x_pixels = np.array(x).astype(int)
                     y_pixels = np.array(y).astype(int)
                     binary_mask[y_pixels, x_pixels] = 1
-                    brush_mask = pycocotools.mask.encode(np.asfortranarray(binary_mask.astype(np.uint8)))
-                    x_min = np.min(x)
-                    y_min = np.min(y)
-                    x_max = np.max(x)
-                    y_max = np.max(y)
+                    
+                    if plot:
+                        self.visualize_mask(binary_mask, fname)
+                    
+                    brush_mask = coco_mask.encode(np.asfortranarray(binary_mask.astype(np.uint8)))
+                    x_min = np.min(x_pixels)
+                    y_min = np.min(y_pixels)
+                    x_max = np.max(x_pixels)
+                    y_max = np.max(y_pixels)
                     brush_mask['counts'] = brush_mask['counts'].decode('utf-8')
                     brush_mask['size'] = [int(dim) for dim in brush_mask['size']]
                     dt['segmentation'] = brush_mask
@@ -279,9 +283,24 @@ class Dataset(object):
         im = im.astype(float)
         im[~mask] *= 0.25
         cv2.imshow('plot',im.astype(np.uint8))
-        cv2.waitKey(100)
+        cv2.waitKey(300)
         
-    
+        
+    def visualize_mask(self, mask, fname):
+        """
+        visualize the brush mask
+        arguments:
+            mask(object): the brush mask object
+            fname(str): the file name
+        """
+        im = cv2.imread(self.fname_to_fullpath[fname])
+        im = im.astype(float)
+        mask = mask.astype(np.bool)
+        im[~mask] *= 0.25
+        cv2.imshow('plot', im.astype(np.uint8))
+        cv2.waitKey(300)
+
+
 def copy_images_in_folder(path_img, path_out, fnames=None):
     """
     copy the images from one folder to another

@@ -6,7 +6,8 @@ import cv2
 import numpy as np
 
 from label_utils.COCO_dataset import COCO_Dataset, rotate
-from label_utils.plot_utils import plot_one_polygon
+from label_utils.plot_utils import plot_one_polygon, plot_one_brush
+from pycocotools import mask as coco_mask
 
 
 logging.basicConfig()
@@ -15,7 +16,7 @@ logger.setLevel(logging.INFO)
 
 
 
-def get_annotations_from_json(path_json, path_imgs, path_out, conf):
+def get_annotations_from_json(path_json, path_imgs, path_out):
     id_to_img = {}
     id_to_img_name = {}
     with open(path_json) as f:
@@ -34,12 +35,7 @@ def get_annotations_from_json(path_json, path_imgs, path_out, conf):
         bbox = annot['bbox']
         cat_id = int(annot['category_id'])
         img_id = annot['image_id']
-        score = float(annot['score'])
         segs = annot['segmentation']
-        
-        if score<=conf:
-            continue
-        logger.info(f'score: {score}')
         
         if len(bbox) == 5:
             x,y,w,h,angle = bbox
@@ -55,13 +51,20 @@ def get_annotations_from_json(path_json, path_imgs, path_out, conf):
         x,y,w,h = list(map(int,[x,y,w,h]))
         pts = rotate(x,y,w,h,angle,unit='radian',rot_center='center')
         pts = pts.reshape((-1, 1, 2))
-        plot_one_polygon(pts, I, label=f'{cat_id}: {score:.2f}')
+        plot_one_polygon(pts, I, label=f'{cat_id}')
         
-        for seg in segs:
-            pts = np.array(list(map(int, seg)))
-            pts = pts.reshape((-1, 1, 2))
-            plot_one_polygon(pts, I, label=f'{cat_id}: {score:.2f}')
-    
+        if isinstance(segs, list):
+            for seg in segs:
+                pts = np.array(list(map(int, seg)))
+                pts = pts.reshape((-1, 1, 2))
+                plot_one_polygon(pts, I, label=f'{cat_id}')
+        elif isinstance(segs, dict):
+            mask = coco_mask.decode(segs)
+            ys,xs = np.where(mask)
+            plot_one_brush(xs, ys, I, label=f'{cat_id}')
+        else:
+            raise Exception(f'Unknown segmentation type: {type(segs)}')
+
     for id in id_to_img_name:
         path = os.path.join(path_out,id_to_img_name[id])
         logger.info(f'writing to {path}')
@@ -71,15 +74,14 @@ def get_annotations_from_json(path_json, path_imgs, path_out, conf):
 
 
 if __name__ == '__main__':
-    ap = argparse.ArgumentParser('Note: currently only loads the bboxes!')
-    ap.add_argument('--path_imgs', required=True)
-    ap.add_argument('--path_json', required=True)
-    ap.add_argument('-o','--path_out', required=True, help='output path')
-    ap.add_argument('--confidence', default=0.6, type=float)
+    ap = argparse.ArgumentParser()
+    ap.add_argument('-i', '--path_imgs', required=True)
+    ap.add_argument('-j', '--path_json', required=True)
+    ap.add_argument('-o', '--path_out', required=True, help='output path')
     args = ap.parse_args()
     
     if not os.path.isdir(args.path_out):
         os.makedirs(args.path_out)
     
-    get_annotations_from_json(args.path_json, args.path_imgs, args.path_out, args.confidence)
+    get_annotations_from_json(args.path_json, args.path_imgs, args.path_out)
     
