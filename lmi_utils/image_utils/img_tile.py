@@ -54,7 +54,7 @@ def to_tiles(source:str, dest:str, tile_hw, stride_hw, mode=ScaleMode.PADDING, r
     elif src_path.is_dir():
         for t in IM_TYPES:
             for file in src_path.rglob(f'*.{t}') if recursive else src_path.glob(f'*.{t}'):
-                logger.info(file)
+                logger.debug(file)
                 __to_tiles(file, dest_path, tile_hw, stride_hw, mode)
 
 
@@ -73,22 +73,26 @@ def to_images(source, dest, mode=ScaleMode.PADDING):
     
     meta_map = {}
     meta_fname,ext = os.path.splitext(METADATA_FILENAME)
+
     for p in src_path.glob('*'+ext):
-        ls = p.stem.split('-')
-        if len(ls)==2 and ls[1]==meta_fname:
-            meta_map[ls[0]] = p
-            
+        filename = os.path.basename(p)
+        if filename.split('-')[-1] != f'{METADATA_FILENAME}':
+            continue
+        
+        img_file = filename.replace(f'-{METADATA_FILENAME}', '')
+        meta_map[img_file] = p
+        
+    logger.debug(f'number of metadata files : {len(meta_map)}')
     tile_map = collections.defaultdict(list)
     for p in src_path.glob('*.png'):
         ls = p.stem.split('-t')
         if len(ls)==2:
             tile_map[ls[0]] += [(int(ls[1]),p)]
-    
     if tile_map.keys() != meta_map.keys():
         raise Exception('tile fnames must equal to metadata fnames')
     
     for fname,ps in tile_map.items():
-        logger.info(str(p)+'.png')
+        logger.debug(str(p)+'.png')
         # init tiler through loading a metadata.json
         tiler = Tiler.from_json(meta_map[fname])
         
@@ -104,9 +108,7 @@ def to_images(source, dest, mode=ScaleMode.PADDING):
         im = tiler.untile(tiles,mode).squeeze()
         torchvision.io.write_png(im, str(dest_path/(fname+'.png')))
 
-
-
-if __name__=="__main__":
+def main():
     ap=argparse.ArgumentParser()
     ap.add_argument('--option', required=True)
     ap.add_argument('-i','--src', required=True)
@@ -132,4 +134,7 @@ if __name__=="__main__":
         to_tiles(args.src,args.dest,args.tile,args.stride,mode=mode,recursive=args.recursive)
     elif args.option == 'untile':
         to_images(args.src,args.dest,mode)
-        
+
+
+if __name__=="__main__":
+    main()

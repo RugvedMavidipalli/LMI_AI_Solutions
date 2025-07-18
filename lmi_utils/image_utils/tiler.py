@@ -20,6 +20,16 @@ class ScaleMode(str, Enum):
     INTERPOLATION = "interpolation"
 
 
+class OverlapMode(str, Enum):
+    """Type of blending mode for tile edges."""
+    
+    AVERAGE = "average"  
+    LINEAR = "linear"   
+    COSINE = "cosine"    
+    GAUSSIAN = "gaussian"
+    MAX = "max"
+
+
 def compute_new_edges(edges:list, tile_size:list, stride:list):
     def __compute_new_edge(edge, tile, stride):
         if (edge-tile) % stride != 0:
@@ -29,6 +39,86 @@ def compute_new_edges(edges:list, tile_size:list, stride:list):
     out_h = __compute_new_edge(edges[0],tile_size[0],stride[0])
     out_w = __compute_new_edge(edges[1],tile_size[1],stride[1])
     return out_h,out_w
+
+
+def create_blend_mask(tile_size: list, stride: list, overlap_mode: OverlapMode = OverlapMode.AVERAGE, device='cpu') -> torch.Tensor:
+    """Create a blending mask for tile transitions.
+    
+    Args:
+        tile_size (list): [tile_h, tile_w]
+        stride (list): [stride_h, stride_w]
+        overlap_mode (OverlapMode): Type of blending to apply
+        device: Device to create tensor on
+        
+    Returns:
+        torch.Tensor: Blending mask of shape [tile_h, tile_w]
+    """
+    tile_h, tile_w = tile_size
+    stride_h, stride_w = stride
+    
+    # Calculate overlap regions
+    overlap_h = tile_h - stride_h
+    overlap_w = tile_w - stride_w
+    
+    if overlap_h <= 0 or overlap_w <= 0:
+        # no overlap
+        return torch.ones(tile_h, tile_w, device=device)
+    
+    mask = torch.ones(tile_h, tile_w, device=device)
+    
+    if overlap_mode == OverlapMode.AVERAGE:
+        return mask
+    
+    if overlap_mode == OverlapMode.MAX:
+        return mask
+    
+    # distance-based blending
+    y_coords = torch.arange(tile_h, device=device).float()
+    x_coords = torch.arange(tile_w, device=device).float()
+    
+    # Calculate distance from edges
+    y_dist_from_top = y_coords
+    y_dist_from_bottom = tile_h - 1 - y_coords
+    x_dist_from_left = x_coords
+    x_dist_from_right = tile_w - 1 - x_coords
+    
+    # create 2D grids
+    y_grid, x_grid = torch.meshgrid(y_coords, x_coords, indexing='ij')
+    
+    # calculate minimum distance to any edge
+    y_edge_dist = torch.minimum(y_dist_from_top, y_dist_from_bottom)
+    x_edge_dist = torch.minimum(x_dist_from_left, x_dist_from_right)
+    
+    # apply blending in overlap regions only
+    blend_region_h = overlap_h // 2
+    blend_region_w = overlap_w // 2
+    
+    if overlap_mode == OverlapMode.LINEAR:
+        y_blend = torch.clamp(y_edge_dist / blend_region_h, 0, 1)
+        x_blend = torch.clamp(x_edge_dist / blend_region_w, 0, 1)
+        mask = torch.minimum(y_blend, x_blend)
+        
+    elif overlap_mode == OverlapMode.COSINE:
+        y_blend = torch.clamp(y_edge_dist / blend_region_h, 0, 1)
+        x_blend = torch.clamp(x_edge_dist / blend_region_w, 0, 1)
+        y_blend = 0.5 * (1 + torch.cos(torch.pi * (1 - y_blend)))
+        x_blend = 0.5 * (1 + torch.cos(torch.pi * (1 - x_blend)))
+        mask = torch.minimum(y_blend, x_blend)
+        
+    elif overlap_mode == OverlapMode.GAUSSIAN:
+        center_h, center_w = tile_h // 2, tile_w // 2
+        y_dist_center = torch.abs(y_grid - center_h)
+        x_dist_center = torch.abs(x_grid - center_w)
+        
+        sigma_h = blend_region_h / 2
+        sigma_w = blend_region_w / 2
+        
+        gaussian_y = torch.exp(-(y_dist_center ** 2) / (2 * sigma_h ** 2))
+        gaussian_x = torch.exp(-(x_dist_center ** 2) / (2 * sigma_w ** 2))
+
+        mask = torch.minimum(gaussian_y, gaussian_x)
+    
+    return mask
 
 
 @torch.inference_mode()
@@ -112,6 +202,7 @@ class Tiler:
         self.batch_size: int
         self.num_channel: int
         self.n_tiles: list
+        self._blend_mask_cache = {}  # Cache for blend masks by overlap mode
         
         
     @classmethod
@@ -171,36 +262,63 @@ class Tiler:
     
     
     @torch.inference_mode()
-    def untile(self, tiles, mode=ScaleMode.PADDING):
-        """convert tiles into original image. Average the overlapping tiles.
+    def untile(self, tiles, scale_mode=ScaleMode.PADDING, overlap_mode: OverlapMode = OverlapMode.AVERAGE):
+        """convert tiles into original image. Apply blending for smooth transitions.
 
         Args:
             tiles (Torch): the tiles tensor in the format: [n_tiles*batch, c, tile_h, tile_w]
             mode (ScaleMode, optional): scale mode. Defaults to ScaleMode.PADDING.
+            overlap_mode (OverlapMode, optional): overlap handling mode. Defaults to OverlapMode.AVERAGE.
 
         Returns:
-            Tensor: the reconstrcuted image
+            Tensor: the reconstructed image with smooth blending
         """
-        if not isinstance(mode, ScaleMode):
+        if not isinstance(scale_mode, ScaleMode):
             raise Exception('mode must be a ScaleMode object')
+        if not isinstance(overlap_mode, OverlapMode):
+            raise Exception('overlap_mode must be an OverlapMode object')
         
-        # rearrange input tiles in format [tile_count, batch, channel, tile_h, tile_w]
         _,num_channel,tile_h,tile_w = tiles.shape
         tiles = tiles.contiguous().view(-1,self.batch_size,num_channel,tile_h,tile_w)
         device = tiles.device
         
         im = torch.zeros(self.batch_size,num_channel,*self.scale_size,device=device)
-        cnts = torch.zeros(self.batch_size,num_channel,*self.scale_size,device=device)
-        ones = torch.ones(self.batch_size,num_channel,*self.tile_size,device=device)
         
-        for tile,(i,j) in zip(tiles, product(range(0,self.scale_size[0]-self.tile_size[0]+1,self.stride[0]),
-                                      range(0,self.scale_size[1]-self.tile_size[1]+1,self.stride[1]))):
-            im[:,:,i:i+self.tile_size[0],j:j+self.tile_size[1]] += tile
-            cnts[:,:,i:i+self.tile_size[0],j:j+self.tile_size[1]] += ones
+        if overlap_mode == OverlapMode.MAX:
+            for tile,(i,j) in zip(tiles, product(range(0,self.scale_size[0]-self.tile_size[0]+1,self.stride[0]),
+                                          range(0,self.scale_size[1]-self.tile_size[1]+1,self.stride[1]))):
+                
+                # Take maximum between existing values and new tile
+                im[:,:,i:i+self.tile_size[0],j:j+self.tile_size[1]] = torch.maximum(
+                    im[:,:,i:i+self.tile_size[0],j:j+self.tile_size[1]], 
+                    tile
+                )
+        else:
+            cache_key = (overlap_mode.value, str(device))
+            if cache_key not in self._blend_mask_cache:
+                self._blend_mask_cache[cache_key] = create_blend_mask(
+                    self.tile_size, self.stride, overlap_mode, device
+                )
+            
+            blend_mask = self._blend_mask_cache[cache_key]
+            weight_sum = torch.zeros(self.batch_size,num_channel,*self.scale_size,device=device)
+            
+            blend_mask_broadcast = blend_mask.unsqueeze(0).unsqueeze(0).expand(
+                self.batch_size, num_channel, -1, -1
+            )
+            
+            for tile,(i,j) in zip(tiles, product(range(0,self.scale_size[0]-self.tile_size[0]+1,self.stride[0]),
+                                          range(0,self.scale_size[1]-self.tile_size[1]+1,self.stride[1]))):
+                
+                weighted_tile = tile * blend_mask_broadcast
+                
+                im[:,:,i:i+self.tile_size[0],j:j+self.tile_size[1]] += weighted_tile
+                weight_sum[:,:,i:i+self.tile_size[0],j:j+self.tile_size[1]] += blend_mask_broadcast
+            
+            eps = 1e-8
+            im = torch.div(im, weight_sum + eps)
         
-        # average the overlapping tiles
-        im = torch.div(im,cnts)
-        return downscale_image(im,self.im_size,mode).to(tiles.dtype)
+        return downscale_image(im,self.im_size,scale_mode).to(tiles.dtype)
     
     
     def write_metadata(self, out_path):
@@ -220,4 +338,3 @@ class Tiler:
         else:
             os.makedirs(out_path,exist_ok=True)
             save_json(self.__dict__,os.path.join(out_path,'metadata.json'))
-            
