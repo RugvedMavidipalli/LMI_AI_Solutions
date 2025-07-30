@@ -244,9 +244,9 @@ class Tiler:
         
         if self.scale_size[0]!=im_h or self.scale_size[1]!=im_w:
             if mode==ScaleMode.INTERPOLATION:
-                self.logger.warning(f'resize img from {self.im_size} to {self.scale_size}')
+                self.logger.debug(f'resize img from {self.im_size} to {self.scale_size}')
             elif mode==ScaleMode.PADDING:
-                self.logger.warning(f'pad img from {self.im_size} to {self.scale_size}')
+                self.logger.debug(f'pad img from {self.im_size} to {self.scale_size}')
         
         n_tiles_h = int((self.scale_size[0]-self.tile_size[0])/self.stride[0]) + 1
         n_tiles_w = int((self.scale_size[1]-self.tile_size[1])/self.stride[1]) + 1
