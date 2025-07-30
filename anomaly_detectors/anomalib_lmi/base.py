@@ -262,7 +262,7 @@ class Anomalib_Base(ABC):
         proctime = []
         img_all,anom_all,fname_all,path_all=[],[],[],[]
         for image_path in images:
-            self.logger.info(f"Processing image: {image_path}.")
+            self.logger.debug(f"Processing image: {image_path}.")
             image_path=str(image_path)
             img = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
             t0 = time.time()

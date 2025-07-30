@@ -46,7 +46,7 @@ def predict(model_path, images_path, image_size, out_path, recursive=True, tile=
     proctime = []
     anom_all,path_all = [],[]
     for idx, image_path in enumerate(images, 1):
-        logger.info(f"Processing image [{idx}/{len(images)}]: {image_path}")
+        logger.debug(f"Processing image [{idx}/{len(images)}]: {image_path}")
         image_path=str(image_path)
         img = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
         
